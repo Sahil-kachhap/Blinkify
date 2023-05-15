@@ -2,6 +2,7 @@ package routes
 
 import (
   "time"
+  "github.com/url-shortner/database"
 )
 
 type request struct {
@@ -24,6 +25,23 @@ func ShortenUrl(c *fiber.Ctx) error{
    if err := c.BodyParser(&body); err != nil{
       return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error":"cannot parse JSON"})
    } 
+
+   r2 := database.CreateClient(1)
+   defer r2.close()
+   val, err := r2.Get(database.Ctx, c.IP()).Result()
+   if err == redis.Nil{
+      _ = r2.Set(database.Ctx, c.IP(), os.Getenv("API_QUOTA"), 30*60*time.Second).Err()
+   } else {
+      val, _ = r2.Get(database.Ctx, c.IP().Result())
+      valInt, _ := strconv.Atoi(val)
+      if valInt <= 0 {
+         limit, _ := r2.TTL(database.Ctx, c.IP()).Result()
+         return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+            "error":"Rate Limit Exceeded",
+            "rate_limit_reset":limit/time.Nanosecond/time.Minute,
+         })
+      }
+   }
    
    // invalid url passed in request
    if !govalidator.IsURL(body.URL){
@@ -37,4 +55,5 @@ func ShortenUrl(c *fiber.Ctx) error{
    }
 
    body.URL = helpers.EnforceHTTP(body.URL)
+   r2.Decr(database.Ctx, c.IP())
 }
