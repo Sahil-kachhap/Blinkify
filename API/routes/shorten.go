@@ -17,3 +17,24 @@ type response struct {
    XRateRemaining	int				`json:"rate_limit"`
    XRateLimitReset  time.Duration	`json:"rate_limit_reset"`
 }
+
+func ShortenUrl(c *fiber.Ctx) error{
+   body := new(request)
+
+   if err := c.BodyParser(&body); err != nil{
+      return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error":"cannot parse JSON"})
+   } 
+   
+   // invalid url passed in request
+   if !govalidator.IsURL(body.URL){
+      return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error":"Invalid URL"})
+   }
+
+
+   // if user sends localhost:3000 kind of request
+   if !helpers.RemoveDomainError(body.URL){
+      return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error":"service unavailable"})
+   }
+
+   body.URL = helpers.EnforceHTTP(body.URL)
+}
